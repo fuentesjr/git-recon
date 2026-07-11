@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# git-recon — history-first codebase investigation.
+#
+# Self-contained port of the review aliases in dotfiles/git/.gitconfig, for
+# use on machines/containers that don't have those aliases. Output is plain
+# text and capped for consumption by AI agents as well as humans.
+#
+# Run `git-recon explain` for how to interpret each section.
+set -eu
+
+# Analysis windows and output caps. Tune here; raw git is the escape hatch
+# when an investigation needs a different window.
+RECENT_DAYS=90
+RECENT_MAX=50
+CHURN_WINDOW='1 year ago'
+CHURN_MAX=30
+CHURN_DIRS_MAX=20
+AUTHORS_WINDOW='6 months ago'
+AUTHORS_MAX=25
+BUG_FILES_MAX=20
+HOTSPOT_COMMITS=25
+
+die() { printf 'git-recon: %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+git-recon — investigate a codebase through its git history
+
+Usage: git-recon <command> [args]
+
+First pass:
+  overview             recent activity, churn, ownership, repair signals in one shot
+
+Drill-down (after overview points somewhere):
+  hotspot <path>       commit history with per-commit file stats for one file/dir
+  owners <path>        top contributors for a file/dir
+  blame [-L a,b] <file>  whitespace-insensitive blame with short dates
+
+Individual sections (subsets of overview):
+  recent               commit stream, last 90 days
+  churn                most-changed files, last year
+  churn-dirs           most-changed directories, last year
+  authors              active contributors, last 6 months
+  repairs              bug-fix-shaped files + incident/rollback commits
+  monthly              commit volume by month (full history)
+
+Guidance:
+  explain              how to interpret each section (read once before first use)
+EOF
+}
+
+explain() {
+  cat <<'EOF'
+git-recon: interpreting the output
+===================================
+
+Purpose: before reading code in an unfamiliar repo, use history to decide
+what to read first. Churn and repair patterns expose recurring behavior over
+time, not just the current snapshot.
+
+Recommended sequence:
+  1. git-recon overview
+  2. Pick a suspicious file or directory from churn/churn-dirs/repairs.
+  3. git-recon hotspot <path>   — what does its history look like?
+  4. git-recon owners <path>    — who is likely to have context?
+  5. git-recon blame -L a,b <file> — who last touched the lines you care about?
+  6. Read the code with that context.
+
+Section notes and caveats:
+
+recent      Cadence, naming style, revert frequency; whether bots or release
+            commits dominate. Fastest feel for the repo's current workflow.
+
+churn       High churn suggests complexity, instability, or active product
+churn-dirs  work. First check whether top entries are real logic or expected
+            glue (routes, lockfiles, generated code). churn-dirs is more
+            useful than churn in large repos.
+
+authors     Current-activity hint, not bus factor. Who has recent context.
+
+repairs     == bug-files ==   files recurring in commits whose message matches
+            fix|bug|broken. Commit-message heuristic — quality of the signal
+            depends on commit-message discipline in the repo.
+            == firefights ==  commits matching revert|hotfix|emergency|rollback.
+            Narrower and more operational; good for spotting instability or
+            rollback-heavy periods.
+
+monthly     Rough activity trend. Not a team-health metric; volume is heavily
+            shaped by workflow (squash vs merge, bots, release automation).
+
+hotspot     Per-commit stats for one path. Look for repeated repair work,
+            large edits, or a long tail of small patches. Capped at 25
+            commits; use `git log --stat --follow -- <path>` for everything.
+
+owners      Commit counts for one path. More useful than repo-wide counts
+            when you are already focused on an area.
+
+blame       Whitespace-insensitive, so formatting-only changes don't
+            distract. Add `-L start,end` before the file to focus on a range.
+
+General caveats:
+- All of this is signal, not proof. Corroborate before concluding.
+- Shallow clones and squash-merge workflows weaken every section.
+- jj-native repos (no .git directory) are not supported; use `jj` directly.
+EOF
+}
+
+recent() {
+  git log --date=short --pretty=format:'%ad %h %an %s' \
+    --since="${RECENT_DAYS}.days.ago" | head -"$RECENT_MAX"
+}
+
+churn() {
+  git log --format=format: --name-only --since="$CHURN_WINDOW" \
+    | sed '/^$/d' | sort | uniq -c | sort -rn | head -"$CHURN_MAX"
+}
+
+churn_dirs() {
+  git log --format=format: --name-only --since="$CHURN_WINDOW" \
+    | sed '/^$/d' | sed 's,/[^/]*$,,' | sort | uniq -c | sort -rn \
+    | head -"$CHURN_DIRS_MAX"
+}
+
+authors() {
+  git shortlog -sn --since="$AUTHORS_WINDOW" --all --no-merges \
+    | head -"$AUTHORS_MAX"
+}
+
+bug_files() {
+  git log -i -E --grep='fix|bug|broken' --name-only --format= \
+    --since="$CHURN_WINDOW" \
+    | sed '/^$/d' | sort | uniq -c | sort -rn | head -"$BUG_FILES_MAX"
+}
+
+firefights() {
+  git log --oneline -i --extended-regexp --since="$CHURN_WINDOW" \
+    --grep=revert --grep=hotfix --grep=emergency --grep=rollback
+}
+
+repairs() {
+  echo '== bug-files =='
+  bug_files
+  printf '\n== firefights ==\n'
+  firefights
+}
+
+monthly() {
+  git log --format=%ad --date=format:%Y-%m | sort | uniq -c
+}
+
+owners() {
+  [ $# -gt 0 ] || die 'usage: git-recon owners <path>'
+  git shortlog -sn --all --no-merges -- "$@"
+}
+
+hotspot() {
+  [ $# -gt 0 ] || die 'usage: git-recon hotspot <path>'
+  git log -n "$HOTSPOT_COMMITS" --stat --follow -- "$1"
+  printf '\n(last %s commits; run `git log --stat --follow -- %s` for full history)\n' \
+    "$HOTSPOT_COMMITS" "$1"
+}
+
+blame() {
+  [ $# -gt 0 ] || die 'usage: git-recon blame [-L start,end] <file>'
+  git blame -w --date=short "$@"
+}
+
+overview() {
+  printf '== recent (last %s days, first %s) ==\n' "$RECENT_DAYS" "$RECENT_MAX"
+  recent
+  printf '\n\n== churn (last year, top %s files) ==\n' "$CHURN_MAX"
+  churn
+  printf '\n== churn-dirs (last year, top %s dirs) ==\n' "$CHURN_DIRS_MAX"
+  churn_dirs
+  printf '\n== authors (last 6 months, top %s) ==\n' "$AUTHORS_MAX"
+  authors
+  printf '\n== repairs (last year) ==\n\n'
+  repairs
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  help|-h|--help) usage; exit 0 ;;
+  explain) explain; exit 0 ;;
+esac
+
+git rev-parse --git-dir >/dev/null 2>&1 \
+  || die 'not a git repository (jj-native repos are not supported; use jj directly)'
+
+case "$cmd" in
+  overview)   overview ;;
+  recent)     recent; echo ;;
+  churn)      churn ;;
+  churn-dirs) churn_dirs ;;
+  authors)    authors ;;
+  repairs)    repairs ;;
+  monthly)    monthly ;;
+  owners)     owners "$@" ;;
+  hotspot)    hotspot "$@" ;;
+  blame)      blame "$@" ;;
+  *)          usage >&2; die "unknown command: $cmd" ;;
+esac
