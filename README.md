@@ -15,7 +15,8 @@ so it works on machines and containers that don't have those aliases.
 ## Usage
 
 ```text
-git-recon overview              # first pass: recent, churn, authors, repairs
+git-recon overview              # first pass: vitals, recent, churn, authors, repairs
+git-recon vitals                # repo scale + concentration, to calibrate the rest
 git-recon deep                  # coupling, risk, silos, fix-rate, test-gap
 git-recon coupling app/models   # files that co-change with this path
 git-recon risk                  # churn weighted by current complexity

@@ -12,8 +12,11 @@ unfamiliar codebases.
 
 ## Workflow
 
-1. `git-recon overview` — one call: recent activity, file/dir churn, active
-   authors, repair-shaped commits. Start every investigation here.
+1. `git-recon overview` — one call: repo vitals (scale/concentration),
+   recent activity, file/dir churn, active authors, repair-shaped commits.
+   Start every investigation here. Use vitals to calibrate every other
+   number: churn counts only mean something relative to repo size, and the
+   churn share footers say whether the repo is hotspot-driven at all.
 2. If the investigation is about risk or instability, run `git-recon deep`.
 3. Pick a suspicious file or directory from the strongest signals.
 4. `git-recon hotspot <path>` — commit history + per-commit stats for it.

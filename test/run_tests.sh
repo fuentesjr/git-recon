@@ -118,6 +118,28 @@ commit_changes '2026-06-20T12:00:00Z' 'Bob Active' 'bob@example.com' \
 output="$("${GIT_RECON}" churn)"
 assert_contains "${output}" '^[[:space:]]*8[[:space:]]+lib/complex\.rb$' \
   'existing churn command should count complex.rb changes'
+assert_contains "${output}" \
+  '^\(top 30 of 40 files = 88% of 86 changes in last year\)$' \
+  'churn should append a coverage-share footer'
+
+output="$("${GIT_RECON}" churn-dirs)"
+assert_contains "${output}" \
+  '^\(top 5 of 5 dirs = 100% of 86 changes in last year\)$' \
+  'churn-dirs should append a coverage-share footer'
+
+output="$("${GIT_RECON}" vitals)"
+assert_contains "${output}" \
+  '^commits: 16 all-time \(first 2025-06-01\), 15 in last year$' \
+  'vitals should report commit counts and repo age'
+assert_contains "${output}" '^files: 40 touched in last year, 40 tracked$' \
+  'vitals should report touched vs tracked file counts'
+assert_contains "${output}" \
+  '^authors: 1 active in last 6 months of 2 all-time; top: Bob Active \(100% of recent commits\)$' \
+  'vitals should report author concentration'
+
+output="$("${GIT_RECON}" overview)"
+assert_contains "${output}" '^== vitals ==$' \
+  'overview should lead with the vitals section'
 
 output="$("${GIT_RECON}" coupling)"
 assert_contains "${output}" \

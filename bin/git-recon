@@ -55,6 +55,7 @@ Deeper analysis:
   test-gap             logic changes accompanied by test changes
 
 Individual sections (subsets of overview):
+  vitals               repo scale: commit/file/author counts and concentration
   recent               commit stream, last 90 days
   churn                most-changed files, last year
   churn-dirs           most-changed directories, last year
@@ -87,13 +88,21 @@ Recommended sequence:
 
 Section notes and caveats:
 
+vitals      Scale calibration for every other section: 42 commits on a file
+            means something different in a 300-commit repo than a 90k-commit
+            monorepo. The author line is a rough bus-factor hint; "recent
+            commits" counts across all refs, no merges.
+
 recent      Cadence, naming style, revert frequency; whether bots or release
             commits dominate. Fastest feel for the repo's current workflow.
 
 churn       High churn suggests complexity, instability, or active product
 churn-dirs  work. First check whether top entries are real logic or expected
             glue (routes, lockfiles, generated code). churn-dirs is more
-            useful than churn in large repos.
+            useful than churn in large repos. The share footer says how much
+            of total change activity the capped list covers: a high share
+            means hotspot-driven, a low share means change is spread out and
+            the ranking matters less.
 
 authors     Current-activity hint, not bus factor. Who has recent context.
 
@@ -150,6 +159,63 @@ General caveats:
 EOF
 }
 
+# Caps ranked "count name" lines from stdin at $1 rows and appends a share
+# footer, so a truncated list still says how much of the total it covers
+# (whether the repo is hotspot-driven or the distribution is flat).
+share_cap() {
+  awk -v max="$1" -v noun="$2" '
+    {
+      total_changes += $1
+      total_names++
+      if (NR <= max) {
+        shown += $1
+        print
+      }
+    }
+    END {
+      if (total_changes > 0) {
+        printf "(top %d of %d %s = %d%% of %d changes in last year)\n",
+          (total_names < max ? total_names : max), total_names, noun,
+          int(100 * shown / total_changes), total_changes
+      }
+    }'
+}
+
+vitals() {
+  [[ $# -eq 0 ]] || die 'usage: git-recon vitals'
+  local first_date total_commits window_commits touched tracked all_authors
+
+  first_date="$(git log --reverse --date=short --format=%ad | head -1)"
+  total_commits="$(git rev-list --count HEAD)"
+  window_commits="$(git rev-list --count --since="$CHURN_WINDOW" HEAD)"
+  touched="$(git log --format=format: --name-only --since="$CHURN_WINDOW" \
+    | sed '/^$/d' | sort -u | wc -l | tr -d ' ')"
+  tracked="$(git ls-files | wc -l | tr -d ' ')"
+  all_authors="$(git shortlog -sn --all --no-merges | wc -l | tr -d ' ')"
+
+  printf 'commits: %s all-time (first %s), %s in last year\n' \
+    "$total_commits" "$first_date" "$window_commits"
+  printf 'files: %s touched in last year, %s tracked\n' "$touched" "$tracked"
+  git shortlog -sn --since="$AUTHORS_WINDOW" --all --no-merges \
+    | awk -v all="$all_authors" '
+        NR == 1 {
+          top_count = $1
+          top = $0
+          sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", top)
+        }
+        { active++; recent += $1 }
+        END {
+          if (recent > 0) {
+            printf "authors: %d active in last 6 months of %d all-time; ",
+              active, all
+            printf "top: %s (%d%% of recent commits)\n",
+              top, int(100 * top_count / recent)
+          } else {
+            printf "authors: 0 active in last 6 months of %d all-time\n", all
+          }
+        }'
+}
+
 recent() {
   git log --date=short --pretty=format:'%ad %h %an %s' \
     --since="${RECENT_DAYS}.days.ago" | head -"$RECENT_MAX"
@@ -157,13 +223,14 @@ recent() {
 
 churn() {
   git log --format=format: --name-only --since="$CHURN_WINDOW" \
-    | sed '/^$/d' | sort | uniq -c | sort -rn | head -"$CHURN_MAX"
+    | sed '/^$/d' | sort | uniq -c | sort -rn \
+    | share_cap "$CHURN_MAX" files
 }
 
 churn_dirs() {
   git log --format=format: --name-only --since="$CHURN_WINDOW" \
     | sed '/^$/d' | sed 's,/[^/]*$,,' | sort | uniq -c | sort -rn \
-    | head -"$CHURN_DIRS_MAX"
+    | share_cap "$CHURN_DIRS_MAX" dirs
 }
 
 authors() {
@@ -585,7 +652,9 @@ deep() {
 }
 
 overview() {
-  printf '== recent (last %s days, first %s) ==\n' "$RECENT_DAYS" "$RECENT_MAX"
+  printf '== vitals ==\n'
+  vitals
+  printf '\n== recent (last %s days, first %s) ==\n' "$RECENT_DAYS" "$RECENT_MAX"
   recent
   printf '\n\n== churn (last year, top %s files) ==\n' "$CHURN_MAX"
   churn
@@ -611,6 +680,7 @@ main() {
 
   case "$cmd" in
     overview)   overview ;;
+    vitals)     vitals "$@" ;;
     recent)     recent; echo ;;
     churn)      churn ;;
     churn-dirs) churn_dirs ;;
