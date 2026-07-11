@@ -14,11 +14,12 @@ unfamiliar codebases.
 
 1. `git-recon overview` — one call: recent activity, file/dir churn, active
    authors, repair-shaped commits. Start every investigation here.
-2. Pick a suspicious file or directory from the churn/repairs sections.
-3. `git-recon hotspot <path>` — commit history + per-commit stats for it.
-4. `git-recon owners <path>` — likely owners / who has context.
-5. `git-recon blame -L start,end <file>` — recent line-level history.
-6. Only now read the code, with historical context.
+2. If the investigation is about risk or instability, run `git-recon deep`.
+3. Pick a suspicious file or directory from the strongest signals.
+4. `git-recon hotspot <path>` — commit history + per-commit stats for it.
+5. `git-recon owners <path>` — likely owners / who has context.
+6. `git-recon blame -L start,end <file>` — recent line-level history.
+7. Only now read the code, with historical context.
 
 Run `git-recon explain` once if you need interpretation guidance for a
 section (caveats, what each signal does and does not mean).
