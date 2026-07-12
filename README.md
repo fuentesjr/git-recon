@@ -33,6 +33,9 @@ git-recon help                  # full command list
 Because the script is named `git-recon` and on PATH, `git recon <cmd>` also
 works.
 
+[docs/examples.md](docs/examples.md) walks through a real session against
+rails/rails — overview, deep, and drill-downs with annotated output.
+
 ## Install
 
 ```sh
