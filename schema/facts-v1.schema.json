@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "facts-v1.schema.json",
+  "title": "git-recon facts protocol v1",
+  "oneOf": [
+    { "$ref": "#/$defs/success" },
+    { "$ref": "#/$defs/failure" }
+  ],
+  "$defs": {
+    "oid": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "commit": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/oid",
+          "description": "Full commit object ID."
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Committer time as a Unix epoch."
+        },
+        {
+          "type": "string",
+          "description": "Normalized one-line commit subject.",
+          "$comment": "Producer caps this value at 160 UTF-8 bytes."
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false
+    },
+    "indexes": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "maxItems": 5,
+      "uniqueItems": true,
+      "$comment": "Values index the top-level commits array."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+      "description": "UTF-8 repo path without C0 or DEL controls."
+    },
+    "supportingIndexes": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "description": "Representative supporting commits, indexing commits."
+    },
+    "coupledRow": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/path",
+          "description": "Current path that cochanged with the seed."
+        },
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Qualifying cochange count."
+        },
+        { "$ref": "#/$defs/supportingIndexes" }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false
+    },
+    "originRow": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Origin commit index."
+        },
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current start line, inclusive."
+        },
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current end line, inclusive."
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false,
+      "$comment": "Index addresses commits; start must not exceed end."
+    },
+    "success": {
+      "type": "object",
+      "properties": {
+        "v": { "const": 1 },
+        "at": { "$ref": "#/$defs/oid" },
+        "path": { "$ref": "#/$defs/path" },
+        "since": { "type": "integer" },
+        "commits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/commit" },
+          "maxItems": 20
+        },
+        "recent": { "$ref": "#/$defs/indexes" },
+        "repairs": { "$ref": "#/$defs/indexes" },
+        "coupled": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/coupledRow" },
+          "maxItems": 5
+        },
+        "origins": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/originRow" },
+          "maxItems": 5
+        }
+      },
+      "required": [
+        "v", "at", "path", "since", "commits", "recent", "repairs",
+        "coupled", "origins"
+      ],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "v": { "const": 1 },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "not_repository",
+                "shallow_repository",
+                "invalid_revision",
+                "invalid_path",
+                "invalid_range",
+                "unsupported_format",
+                "invalid_arguments",
+                "unsupported_path_encoding",
+                "git_failure"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["v", "error"],
+      "additionalProperties": false
+    }
+  }
+}

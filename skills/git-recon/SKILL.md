@@ -27,14 +27,29 @@ unfamiliar codebases.
 Run `git-recon explain` once if you need interpretation guidance for a
 section (caveats, what each signal does and does not mean).
 
+## Automated consumers
+
+Use this bounded machine contract when an agent or tool needs history for a
+known seed path:
+
+```text
+git-recon facts --format=json [--at REV] [-L START,END] -- PATH
+```
+
+For ctxpack, resolve the input seed to a repository path and optional source
+range before calling `facts`; ctxpack decides which returned facts enter its
+packet. Parse the versioned compact JSON by its schema rather than displaying
+the transport directly. This interface supplements, and never replaces, the
+overview-first human orientation workflow above.
+
 ## Rules
 
 - Treat output as signal, not proof. The repairs section is a commit-message
   heuristic; corroborate before concluding anything about quality or health.
 - Check whether top churn entries are real logic files or expected glue
   (lockfiles, routes, generated code) before drilling in.
-- Shallow clones and squash-merge workflows weaken every signal — note this
-  in your findings if the repo is one.
+- `facts` refuses shallow repositories. Shallow clones and squash-merge
+  workflows weaken the human-oriented reports; note this in your findings.
 - If `git-recon` is not on PATH (fresh container), fall back to raw git:
   the script at `~/Projects/git-recon/bin/git-recon` documents every
   underlying command.

@@ -38,6 +38,36 @@
   (one targeted SC2016 disable for a single-quoted awk program). Deliberate
   deviations documented in the header: env shebang (macOS /bin/bash is 3.2)
   and no pipefail (SIGPIPE rationale above).
+- `facts` is a separate, versioned compact JSON contract for automated
+  consumers. Fixed tuples avoid repeated keys: commits are `[oid, epoch,
+  subject]`, lists reference commit indexes, coupling is
+  `[path, count, [supporting commit indexes]]`, and line origins are
+  `[commit_index, start, end]`.
+- Its 365-day window anchors to the resolved revision, not wall-clock time.
+  The inclusive window applies to recent, repair, and coupling facts; line
+  origins may name older ancestors. Lists cap at five, shared commits cap at
+  20, and deterministic sort keys are part of the contract. Full OIDs
+  preserve SHA-1 and SHA-256 compatibility.
+- Coupling provenance is representative rather than exhaustive. Up to five
+  supporting indexes reuse support commits from the fixed recent/repair base
+  table. If none occur there, the newest support is reused or added. This
+  preserves traceability without letting the compact table grow without bound.
+- Repairs match `fix|bug|broken` case-insensitively against the full commit
+  message. Coupling skips commits with more than 30 distinct added, modified,
+  or deleted paths and returns only paths present at the resolved revision.
+  Path history is literal and does not follow renames. Origins are contiguous,
+  whitespace-insensitive blame spans and are produced only for `-L`.
+- `schema/facts-v1.schema.json` defines success and typed failure payloads.
+  Cross-field index/range checks and the 160 UTF-8-byte subject cap remain
+  documented rules because JSON Schema cannot express them.
+- Valid UTF-8 path text is preserved. Subject normalization maps C0/DEL
+  controls to spaces, collapses and trims whitespace, drops invalid UTF-8,
+  caps at 160 bytes, then drops any split trailing codepoint. Invalid or
+  control-byte paths return a typed error. `iconv` is a required system tool,
+  but this pass adds no package dependency.
+- Machine output omits author-name and email metadata, message bodies, patches,
+  and raw Git output. Paths and subjects are not privacy-filtered. Existing
+  human commands and their human-oriented plain-text reports are unchanged.
 
 ## Scope boundaries
 
@@ -45,6 +75,9 @@
 - `branches`/`incoming`/`outgoing`/`tags-recent` aliases deliberately left
   out — they concern local branch state, not codebase investigation.
 - Not added to the preferences gist; propose separately if it proves useful.
+- This pass adds git-recon's agent contract only. It does not integrate
+  ctxpack, score relevance, add package dependencies, or change human report
+  formats.
 
 ## Verification
 
@@ -68,3 +101,41 @@
 - Post-implementation style pass re-verified: `shellcheck` clean on script
   and tests, zero lines over 80 chars, fixture suite green, `deep` runs
   clean on Rails.
+
+### Facts contract evidence
+
+- Baseline: `test/run_tests.sh` passed and ShellCheck was clean before edits.
+- Tracer RED: the suite exited 1 with `git-recon: unknown command: facts`;
+  GREEN: the fixture suite passed.
+- Recent/repair RED: `facts should rank recent and repair commits for the
+  seed path`; coupling RED: `facts should rank current co-change paths for the
+  seed path`. Each slice reached the fixture-suite PASS line.
+- Origins RED: `facts --format=json -L 1,2` exited nonzero with the prior usage
+  error; GREEN: the fixture suite passed.
+- Typed-error RED: `facts should report not_repository as compact JSON on
+  stdout`; the shallow case was also observed red. Unicode RED: `facts should
+  accept valid UTF-8 paths`. GREEN preserved `lib/café.rb` and its Unicode,
+  quoted, backslashed subject; the fixture suite passed.
+- Final verification: `test/run_tests.sh` printed its PASS line; ShellCheck
+  and `/bin/bash -n bin/git-recon test/run_tests.sh` were clean. Ruby's JSON
+  parser loaded the schema, `git diff --check` was clean, and help displayed
+  the facts syntax. No new line exceeds 80 characters; existing long lines
+  remain unchanged.
+- Documentation and schema reconciliation corrected the example cutoff,
+  bounded the shared commit table at 20, documented signal semantics and
+  privacy limits, and restored representative coupling provenance as the
+  third tuple item. Ruby's JSON parser and `git diff --check` verify these
+  documentation-only edits.
+- Review caught a Rails-scale process-amplification defect before acceptance:
+  the first implementation spawned work per escaped control byte, candidate
+  commit, and candidate path and did not finish the representative Rails path
+  within 35 seconds. The corrected path normalizes controls in one pipeline,
+  rejects oversized commits before partner work, batches current-tree object
+  checks, and streams all candidate diffs through one Git process. Parent
+  smokes for Rails' PostgreSQL adapter completed in 10.27–13.02 seconds; the
+  interface is now bounded but remains a deliberately non-instant history
+  query on a large, high-churn seed.
+- Additional fixture coverage protects future-timestamp exclusion, literal
+  pathspecs, Git-failure propagation, signal cleanup, list and provenance
+  caps, equal-epoch OID ordering, historical revisions, locale/time-zone
+  replay, and UTF-8-safe subject truncation with empty success stderr.
