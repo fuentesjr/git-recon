@@ -68,6 +68,11 @@
 - Machine output omits author-name and email metadata, message bodies, patches,
   and raw Git output. Paths and subjects are not privacy-filtered. Existing
   human commands and their human-oriented plain-text reports are unchanged.
+- Repair matching reuses the ordinary path-history commit set with
+  `git log --no-walk`; it must not pay for a second path-limited revision walk.
+- Coupling filters commits over the 30-path ceiling in a quoted line-oriented
+  pass, then sends only eligible commits through the exact NUL-delimited Bash
+  parser. Quoted names are count keys only and never reach the JSON response.
 
 ## Scope boundaries
 
@@ -139,3 +144,20 @@
   pathspecs, Git-failure propagation, signal cleanup, list and provenance
   caps, equal-epoch OID ordering, historical revisions, locale/time-zone
   replay, and UTF-8-safe subject truncation with empty success stderr.
+- A Rails Trace2 profile of the PostgreSQL adapter query measured 10.417s wall
+  time. Three path-history walks used 4.776s, all 23 Git processes used 5.116s,
+  and Bash spent 4.763s parsing 38,092 diff tokens. The optimized query parses
+  1,130 exact tokens after a cheap quoted-name count pass and reuses the first
+  history walk for repair filtering.
+- `test/benchmark_facts.sh` is an opt-in, external-checkout benchmark because
+  wall time is unsuitable for the deterministic fixture suite. At an 8s gate,
+  the pinned Rails case was red at 10.776s and green at 4.965s with the same
+  1,920 bytes (SHA-256
+  `02c35bdc7c0d73c3b7eaece160ec4f0ad66efcc72558b940cf4f17d329e1ff43`).
+- Final checkout runs completed in 4.838s, 4.845s, and 5.192s. The fixture
+  suite, ShellCheck, Bash syntax checks, and `git diff --check` all pass.
+- A compiled rewrite is not justified by this profile. Keeping Git subprocesses
+  leaves roughly one second of orchestration overhead after optimization;
+  replacing the history walks would instead be a new Git-semantics and
+  distribution project. If a future target requires that work, evaluate Rust
+  first, C/libgit2 second, and Zig only with evidence of a specific advantage.
