@@ -156,8 +156,9 @@ assert_contains "${output}" \
   'vitals should report commit counts and repo age'
 assert_contains "${output}" '^files: 40 touched in last year, 40 tracked$' \
   'vitals should report touched vs tracked file counts'
-assert_contains "${output}" \
-  '^authors: 1 active in last 6 months of 2 all-time; top: Bob Active \(100% of recent commits\)$' \
+vitals_authors='^authors: 1 active in last 6 months of 2 all-time; '
+vitals_authors="${vitals_authors}top: Bob Active \(100% of recent commits\)$"
+assert_contains "${output}" "${vitals_authors}" \
   'vitals should report author concentration'
 
 output="$("${GIT_RECON}" overview)"
@@ -395,6 +396,24 @@ commit_changes '2026-07-04T12:00:00Z' 'Bob Active' 'bob@example.com' \
 output="$("${GIT_RECON}" facts --format=json -- lib/control.rb)"
 [[ "${output}" == *'"fix control subject here"'* ]] \
   || fail 'facts should normalize subject control bytes'
+
+# Porcelain content lines are tab-prefixed source text; ones shaped like
+# "hex num num" (the first resolving to a real commit prefix) must not be
+# parsed as blame headers.
+hex_prefix="$(git rev-parse HEAD | cut -c1-8)"
+printf '%s 5 7\nabc 1 2\n' "${hex_prefix}" > lib/hex_table.rb
+git add -- lib/hex_table.rb
+GIT_AUTHOR_NAME='Bob Active' GIT_AUTHOR_EMAIL='bob@example.com' \
+  GIT_AUTHOR_DATE='2026-07-04T13:00:00Z' \
+  GIT_COMMITTER_NAME='Bob Active' GIT_COMMITTER_EMAIL='bob@example.com' \
+  GIT_COMMITTER_DATE='2026-07-04T13:00:00Z' \
+  git commit -q -m 'add hex table'
+if ! output="$("${GIT_RECON}" facts --format=json -L 1,2 \
+  -- lib/hex_table.rb)"; then
+  fail 'facts -L should not misparse hex-shaped content lines'
+fi
+[[ "${output}" == *'"origins":[[0,1,2]]}'* ]] \
+  || fail 'facts -L origins must come only from blame headers'
 
 tie_date='2026-07-05T12:00:00Z'
 commit_changes "${tie_date}" 'Bob Active' 'bob@example.com' \

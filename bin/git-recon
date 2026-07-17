@@ -325,7 +325,7 @@ json_subject() {
     | LC_ALL=C tr '\001-\037\177' ' ' \
     | LC_ALL=C sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//' \
     | iconv -c -f UTF-8 -t UTF-8 2>/dev/null \
-    | dd bs="$FACTS_SUBJECT_BYTES" count=1 2>/dev/null \
+    | head -c "$FACTS_SUBJECT_BYTES" \
     | iconv -c -f UTF-8 -t UTF-8 2>/dev/null)"
   json_escape "$value"
 }
@@ -802,16 +802,17 @@ facts() {
     git -C "$repo_top" blame -w --line-porcelain -L "$line_range" \
       "$resolved_at" -- "$path" > "$blame_file" 2>/dev/null \
       || facts_error git_failure 'git query failed'
-    awk 'NF >= 3 && $1 ~ /^\^?[0-9a-f]+$/ && $2 ~ /^[0-9]+$/ &&
-        $3 ~ /^[0-9]+$/ {
-          sub(/^\^/, "", $1)
+    # Content lines are tab-prefixed source text and can themselves look
+    # like "hex num num"; only untabbed full-OID header lines are blame
+    # headers (line-porcelain never abbreviates or ^-prefixes them).
+    awk '/^\t/ { next }
+        NF >= 3 && $1 ~ /^([0-9a-f]{40}|[0-9a-f]{64})$/ &&
+        $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {
           printf "%s\t%s\n", $1, $3
         }' "$blame_file" > "$blame_lines_file"
     : > "$origins_file"
     origin_sha=''
     while IFS="$tab" read -r blamed_sha i; do
-      blamed_sha="$(git rev-parse --verify "${blamed_sha}^{commit}" \
-        2>/dev/null)" || facts_error git_failure 'git query failed'
       if [[ "$blamed_sha" == "$origin_sha" ]]; then
         origin_end="$i"
         continue
@@ -1248,7 +1249,8 @@ deep() {
 overview() {
   printf '== vitals ==\n'
   vitals
-  printf '\n== recent (last %s days, first %s) ==\n' "$RECENT_DAYS" "$RECENT_MAX"
+  printf '\n== recent (last %s days, first %s) ==\n' \
+    "$RECENT_DAYS" "$RECENT_MAX"
   recent
   printf '\n\n== churn (last year, top %s files) ==\n' "$CHURN_MAX"
   churn
