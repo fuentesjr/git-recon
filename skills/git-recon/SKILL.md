@@ -1,6 +1,6 @@
 ---
 name: git-recon
-description: History-first codebase investigation via the git-recon CLI. Use BEFORE reading code in an unfamiliar repo, when asked to review/audit/orient in a codebase, find hotspots or likely owners, or investigate instability (frequent fixes, reverts, rollbacks). Not for jj-native repos (no .git directory).
+description: History-first codebase investigation via the git-recon CLI. Use BEFORE reading code in an unfamiliar repo, when asked to review/audit/orient in a codebase, find hotspots or likely owners, or investigate instability (frequent fixes, reverts, rollbacks); also BEFORE editing a file whose history you have not seen, and BEFORE declaring a change done (check co-changed files and tests). Not for jj-native repos (no .git directory).
 ---
 
 # git-recon
@@ -27,6 +27,20 @@ unfamiliar codebases.
 Run `git-recon explain` once if you need interpretation guidance for a
 section (caveats, what each signal does and does not mean).
 
+## Before editing a file
+
+If you have not looked at a file's history, run `git-recon hotspot <path>`
+or `git-recon facts --format=json -- <path>` first. Note recent fixes and
+coupled files. Run `git-recon owners <path>` to find who has context.
+
+## Before declaring a change done
+
+For each edited file, find its matching tests and confirm any you did not
+touch were left alone on purpose. Then run `git-recon coupling <path>` (or
+read the `coupled` facts). Treat an untouched coupled file as a lead only
+when its co-change count is 3 or more; lower counts are mostly noise from
+sweep commits.
+
 ## Automated consumers
 
 Use the versioned machine contract when a tool or pipeline needs bounded
@@ -45,6 +59,11 @@ before calling, and parse by the schema (`schema/facts-v1.schema.json` in
 the git-recon repo) rather than displaying the transport directly. For
 interactive orientation this supplements, and never replaces, the
 overview-first workflow above.
+
+Rows are positional arrays, not objects. `recent`, `repairs`, and the last
+element of each `coupled` row `[path, count, [indexes]]` are indexes into
+`commits` (`[oid, epoch, subject]`). `origins` rows are
+`[commit index, start, end]`.
 
 ## Rules
 
