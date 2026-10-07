@@ -8,14 +8,10 @@ and rollback-shaped commits). One `overview` call gives the first pass;
 `deep` adds slower risk/instability signals, and focused drill-down
 subcommands follow the trail.
 
-This is a self-contained port of the review aliases in
-`dotfiles/git/.gitconfig` (documented in `GIT_ALIASES_CHEATSHEET.md` there),
-so it works on machines and containers that don't have those aliases.
-
 ## Usage
 
 ```text
-git-recon overview              # first pass: vitals, recent, churn, authors, repairs
+git-recon overview              # vitals, recent, churn, churn-dirs, authors, repairs
 git-recon vitals                # repo scale + concentration, to calibrate the rest
 git-recon deep                  # coupling, risk, silos, fix-rate, test-gap
 git-recon coupling app/models   # files that co-change with this path
@@ -44,6 +40,9 @@ path instead of the human-oriented reports above:
 ```text
 git-recon facts --format=json [--at REV] [-L START,END] -- PATH
 ```
+
+PATH is relative to the repository root and names a file or directory (`-L`
+needs a file); `--at` defaults to `HEAD`.
 
 The command emits one compact line; whitespace is added below for display:
 
@@ -76,8 +75,9 @@ commit message. Coupling counts qualifying cochanges with the seed: only
 non-merge commits count, commits touching more than 30 distinct added,
 modified, or deleted paths are skipped, and only coupled paths that exist at
 the resolved revision are returned. Bookkeeping paths (changelogs, lockfiles,
-release notes; the list the human reports hide) are never coupled and take
-no coupled slots.
+release notes; the list `churn`, `churn-dirs`, and `bug-files` hide) are never
+coupled and take no coupled slots. The human `coupling` report still lists
+them.
 Supporting indexes are representative and capped at five: they reuse support
 commits from the fixed recent/repair commit table, and when none occur there
 the producer reuses or adds the newest support. History is scoped to the
@@ -117,29 +117,9 @@ ln -s "$PWD/skills/git-recon" ~/.claude/skills/git-recon
 - Human-oriented reports use plain text with hard caps per section, so agent
   token cost stays bounded on large repos. Raw git is the escape hatch for
   full history.
-- `overview` stays the cheap orientation pass. Run `deep` explicitly when an
-  investigation needs slower risk and instability analysis, then use the
-  path-based drill-down commands on the strongest signals.
-- Everything here is signal, not proof. The `repairs` section is a
-  commit-message heuristic and depends on message discipline in the repo.
 - Windows (90 days recent, one year churn, six months authors) and section caps
   are constants at the top of `bin/git-recon`, not flags. Interpretation
   guidance lives in `git-recon explain`, so report output stays data only.
-- `coupling` counts pairs per commit over one year and skips commits that touch
-  more than 30 files. It reports counts, not ratios. `risk` multiplies one-year
-  churn by current lines times maximum indentation (a tab or two spaces is one
-  level) for current text files; deleted and binary files are excluded.
-  `silos` and `test-gap` examine only the top 20 churn files, and `fix-rate`
-  requires five commits. `test-gap` classifies tests by path only: `test`,
-  `tests`, `spec`, or `__tests__` directories and `_test`, `_spec`, `.test`, or
-  `.spec` filenames.
-- `hotspot` passes `--follow` to `git log`, so a file's history continues
-  across renames.
-- The script runs on Bash 3.2 (macOS `/bin/bash`), hence the `env` shebang. It
-  sets `set -eu` without `pipefail` because sections pipe through `head`, which
-  can SIGPIPE an upstream `sort` and would otherwise fail the command.
-- `facts` is the versioned machine contract; it does not change the plain-text
-  human commands or their overview-first workflow.
 - `test/benchmark_facts.sh` is an opt-in timing check against an external
   checkout. Wall time is machine-dependent, so it stays out of the
   deterministic `test/run_tests.sh` suite.

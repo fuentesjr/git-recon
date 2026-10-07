@@ -2,19 +2,21 @@
 
 A real session showing the intended workflow: `overview` to orient, `deep`
 for risk signals, then drill-downs on the strongest trail. Every code block
-below is actual output; rows elided from the middle of a block are marked
-with `…` in place, and `… (output trimmed)` marks a truncated tail. The
-interpretation notes are what you'd conclude at each step.
+below is actual output, but each block is an excerpt and some sections are
+skipped. Rows elided from the middle of a block are marked with `…` in
+place, and `… (output trimmed)` marks a truncated tail. The interpretation
+notes are what you'd conclude at each step.
 
 Pinned so drift is detectable:
 
 - git-recon `f1e33d6` (2026-07-11); the `recent`, `churn`, `churn-dirs`,
-  `bug-files`, and `owners` blocks were regenerated with the commit that
-  last changed this file (`git log -1 -- docs/examples.md`). The other
-  blocks reproduce unchanged with that commit.
+  `bug-files`, and `owners` blocks were regenerated with git-recon
+  `1cc73de` (2026-10-06). The other blocks reproduce unchanged with that
+  commit.
 - rails/rails at `3947087c36` (main, 2026-07-12), full-history
-  single-branch clone (vitals counts all refs, so a default clone's numbers
-  will differ slightly)
+  single-branch clone (only vitals' authors line counts all refs, so a
+  default clone's author counts will differ slightly; the commit and file
+  counts read HEAD)
 - session run 2026-07-12; regenerated blocks run on a clock pinned to
   2026-07-12T20:00:00Z
 
@@ -57,9 +59,10 @@ a repo where 1,953 files changed last year, 42 commits on one file is a lot.
 
 Daily cadence and descriptive "Fix …" subjects. That second part matters:
 the `repairs` and `fix-rate` sections are commit-message heuristics, and
-this repo's message discipline means they'll be trustworthy. The footer
-says the 50 lines cover one week (July 5–12) of 731 commits in 90 days, so
-this section samples the cadence rather than summarizing the quarter.
+this repo's message discipline makes them a stronger signal than usual.
+The footer says the 50 lines cover one week (July 5–12) of 731 commits in
+90 days, so this section samples the cadence rather than summarizing the
+quarter.
 
 ```text
 == churn (last year, top 30 files) ==
@@ -116,6 +119,7 @@ the trail to follow.
    7 activerecord/lib/active_record/connection_adapters/abstract/connection_pool.rb
 …
 (changelogs, lockfiles, release notes hidden)
+… (firefights trimmed)
 ```
 
 Rails' convention is that every fix commit also edits a changelog, so
@@ -282,6 +286,6 @@ Before reading a line of adapter code, the session established: the active
 subsystem is Active Record's connection-adapter layer; changes there fan out
 across all database adapters via the abstract/database_statements contract;
 Matthew Draper has the current context while Patterson and Kamizono have the
-historical context; recent work is connection-failure hardening; and the
-repair heuristics are trustworthy here because commit discipline is good.
-That's the reading order and the review roster, from history alone.
+historical context; recent work is connection-failure hardening; and this
+repo's message discipline makes the repair heuristics a stronger signal than
+usual. That's the reading order and the review roster, from history alone.

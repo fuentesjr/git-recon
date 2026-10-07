@@ -62,7 +62,7 @@ git-recon — investigate a codebase through its git history
 Usage: git-recon <command> [args]
 
 First pass:
-  overview             recent activity, churn, ownership, repairs in one shot
+  overview             vitals, recent, churn, churn-dirs, authors, repairs
 
 Drill-down (after overview points somewhere):
   hotspot <path>       commit history with per-commit stats for one path
@@ -84,6 +84,8 @@ Individual sections (subsets of overview):
   churn-dirs           most-changed directories, last year
   authors              active contributors, last 6 months
   repairs              bug-fix-shaped files + incident/rollback commits
+
+History:
   monthly              commit volume by month (full history)
 
 Guidance:
@@ -146,36 +148,47 @@ repairs     == bug-files ==   files recurring in commits whose message matches
 
 coupling    Files that often change in the same commit. High counts suggest
             coordination or a hidden dependency; pass a path to focus on its
-            partners. Commits over 30 files are skipped as likely sweeps, and
-            the one-year window can miss older or slower-moving relationships.
+            partners. Counts are raw co-change counts, not ratios. Commits
+            over 30 files are skipped as likely sweeps, and the one-year
+            window can miss older or slower-moving relationships. This
+            report differs from facts `coupled`: it keeps bookkeeping and
+            deleted files and uses a wall-clock window; facts drops
+            bookkeeping, lists only paths present at the revision, and
+            anchors its window to the revision.
 
 risk        One-year churn weighted by current lines times maximum indentation
-            depth. High scores prioritize hot, structurally dense files over
-            routine glue. Indentation is only a complexity proxy; current-tree
-            complexity is combined with historical churn, so renames and large
-            rewrites can make the two sides of the score disagree.
+            depth (a tab or two spaces is one level). Only current text
+            files score; deleted and binary files drop out. High scores
+            prioritize hot, structurally dense files over routine glue.
+            Indentation is only a complexity proxy; current-tree complexity
+            is combined with historical churn, so renames and large rewrites
+            can make the two sides of the score disagree.
 
-silos       For hot files, the majority author, their commit share, and whether
-            they are active in the last six months. High-share INACTIVE entries
-            flag orphaned-knowledge risk. Commit counts are not line ownership
-            and do not capture reviews, pairing, or uncommitted expertise.
+silos       For the top 20 churn files, the majority author, their commit
+            share, and whether they are active in the last six months.
+            High-share INACTIVE entries flag orphaned-knowledge risk. Commit
+            counts are not line ownership and do not capture reviews,
+            pairing, or uncommitted expertise.
 
 fix-rate    Repair-shaped commits divided by all commits for frequently changed
             files. High rates suggest repeated repair relative to activity;
             files need at least five commits. Like repairs, this depends on
             commit-message discipline and is not a defect-rate measurement.
 
-test-gap    For hot non-test files, the share of commits that also changed a
-            test file; low values are the gap signal. This is the flakiest
-            heuristic here: path naming drives classification, so monorepos and
+test-gap    For the top 20 non-test churn files, the share of commits that
+            also changed a test file; low values are the gap signal. Test
+            files are classified by path only: test, tests, spec, or
+            __tests__ directories, and _test, _spec, .test, or .spec
+            filenames. This is the flakiest heuristic here: monorepos and
             unconventional test layouts can break it.
 
 monthly     Rough activity trend. Not a team-health metric; volume is heavily
             shaped by workflow (squash vs merge, bots, release automation).
 
 hotspot     Per-commit stats for one path. Look for repeated repair work,
-            large edits, or a long tail of small patches. Capped at 25
-            commits; use `git log --stat --follow -- <path>` for everything.
+            large edits, or a long tail of small patches. History follows
+            renames. Capped at 25 commits; use
+            `git log --stat --follow -- <path>` for everything.
 
 owners      Non-merge commit counts on the current branch for one path, with
             each author's last commit there; capped at 20. An old date means
@@ -188,6 +201,9 @@ blame       Whitespace-insensitive, so formatting-only changes don't
 General caveats:
 - All of this is signal, not proof. Corroborate before concluding.
 - Shallow clones and squash-merge workflows weaken every section.
+- Only churn, churn-dirs, bug-files, and facts `coupled` hide bookkeeping
+  files (changelogs, lockfiles, release notes); coupling, risk, silos,
+  fix-rate, and test-gap show them.
 - jj-native repos (no .git directory) are not supported; use `jj` directly.
 EOF
 }
