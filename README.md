@@ -72,17 +72,22 @@ rank newest first, with full OID as the tie-breaker. Coupled paths rank by
 count, then path; origins follow current line order.
 
 Repair candidates match `fix|bug|broken` case-insensitively against the full
-commit message. Coupling counts qualifying cochanges with the seed: commits
-touching more than 30 distinct added, modified, or deleted paths are skipped,
-and only coupled paths that exist at the resolved revision are returned.
+commit message. Coupling counts qualifying cochanges with the seed: only
+non-merge commits count, commits touching more than 30 distinct added,
+modified, or deleted paths are skipped, and only coupled paths that exist at
+the resolved revision are returned. Bookkeeping paths (changelogs, lockfiles,
+release notes; the list the human reports hide) are never coupled and take
+no coupled slots.
 Supporting indexes are representative and capped at five: they reuse support
 commits from the fixed recent/repair commit table, and when none occur there
 the producer reuses or adds the newest support. History is scoped to the
 literal path and does not follow renames. Recent and repair commits come from
-Git's default simplified path history, while coupling candidates use full
-history, so a merge-side cochange can support a coupled row without appearing
-in `recent`. Origins are emitted only with `-L`; they collapse contiguous,
-whitespace-insensitive blame spans inside the requested current-line range.
+Git's default simplified path history. Coupling candidates are every
+non-merge commit in the window reachable from the revision, including
+side-branch commits that simplification prunes, so a supporting commit can be
+absent from `recent`. Origins are emitted only with `-L`; they collapse
+contiguous, whitespace-insensitive blame spans inside the requested
+current-line range.
 
 Shallow repositories are refused. Typed errors go to stdout as JSON and exit
 nonzero. The interface omits author-name and email metadata, commit-message

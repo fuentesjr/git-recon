@@ -318,9 +318,7 @@ expected="${expected}\"commits\":[${expected_commits}],"
 expected="${expected}\"recent\":[0,1,2,3,4],"
 expected_coupled='"coupled":[["lib/orphan.rb",5,[0,1,2,3,4]],'
 expected_coupled="${expected_coupled}[\"lib/pair_a.rb\",5,[0,1,2,3,4]],"
-expected_coupled="${expected_coupled}[\"lib/pair_b.rb\",5,[0,1,2,3,4]],"
-expected_coupled="${expected_coupled}[\"CHANGELOG.md\",3,[0,2,4]],"
-expected_coupled="${expected_coupled}[\"Gemfile.lock\",2,[1,3]]]"
+expected_coupled="${expected_coupled}[\"lib/pair_b.rb\",5,[0,1,2,3,4]]]"
 expected="${expected}\"repairs\":[1,2,3,4],${expected_coupled},"
 expected="${expected}\"origins\":[]}"
 output="$("${GIT_RECON}" facts --format=json -- lib/buggy.rb)"
@@ -330,10 +328,8 @@ output="$("${GIT_RECON}" facts --format=json -- lib/buggy.rb)"
   || fail \
   'facts should couple current paths to supporting commit indexes'
 
-support_partners=(
-  lib/orphan.rb lib/pair_a.rb lib/pair_b.rb CHANGELOG.md Gemfile.lock
-)
-support_indexes=('0 1 2 3 4' '0 1 2 3 4' '0 1 2 3 4' '0 2 4' '1 3')
+support_partners=(lib/orphan.rb lib/pair_a.rb lib/pair_b.rb)
+support_indexes=('0 1 2 3 4' '0 1 2 3 4' '0 1 2 3 4')
 for ((support_case = 0; support_case < ${#support_partners[@]};
   support_case++)); do
   partner="${support_partners[$support_case]}"
@@ -697,5 +693,114 @@ assert_contains "${output}" \
   'owners should cap its list and say how to see everyone'
 ! printf '%s\n' "${output}" | grep -E 'Member 2[89]' >/dev/null \
   || fail 'owners should drop authors past the cap, ties ordered by name'
+
+# Coupling-noise fixture: its own repo, so merges and bookkeeping files do
+# not disturb the facts expectations above. Each scenario has its own seed
+# path so counts stay independent.
+merge_changes() {
+  local date="$1"
+  local message="$2"
+  shift 2
+
+  GIT_AUTHOR_NAME='Dana Merge' GIT_AUTHOR_EMAIL='dana@example.com' \
+    GIT_AUTHOR_DATE="${date}" \
+    GIT_COMMITTER_NAME='Dana Merge' GIT_COMMITTER_EMAIL='dana@example.com' \
+    GIT_COMMITTER_DATE="${date}" \
+    git merge -q -m "${message}" "$@"
+}
+
+# Compact coupled rows with supporting indexes dropped: [["b.rb",1],...]
+coupled_rows() {
+  "${GIT_RECON}" facts --format=json -- "$1" \
+    | sed -E 's/.*"coupled":(.*),"origins":.*/\1/; s/,\[[0-9,]+\]\]/]/g'
+}
+
+mkdir "${FIXTURE_DIR}/coupling"
+cd "${FIXTURE_DIR}/coupling"
+git init -q
+git config commit.gpgsign false
+git config core.fsmonitor false
+git checkout -q -b main
+dana=('Dana Merge' 'dana@example.com')
+for file in a_seed.rb b.rb b_seed.rb c.rb d.rb t.rb m_seed.rb f.rb g.rb \
+  u.rb; do
+  commit_changes '2026-04-01T12:00:00Z' "${dana[@]}" "Add ${file}" "${file}"
+done
+
+# a. A --no-ff merge must not re-count the pair its branch commit counted.
+git checkout -q -b topic-a
+commit_changes '2026-04-02T12:00:00Z' "${dana[@]}" 'Pair a_seed with b' \
+  a_seed.rb b.rb
+git checkout -q main
+merge_changes '2026-04-03T12:00:00Z' 'Merge topic-a' --no-ff topic-a
+[[ "$(coupled_rows a_seed.rb)" == '[["b.rb",1]]' ]] \
+  || fail 'a --no-ff merge should not recount its branch commit pair'
+
+# b. Mainline drift: against the topic parent the merge diff shows the
+# seed with c.rb and d.rb, but only c.rb was paired by a non-merge commit.
+git checkout -q -b topic-b
+commit_changes '2026-04-04T12:00:00Z' "${dana[@]}" 'Topic work' t.rb
+git checkout -q main
+commit_changes '2026-04-05T12:00:00Z' "${dana[@]}" 'Drift pair' \
+  b_seed.rb c.rb
+commit_changes '2026-04-06T12:00:00Z' "${dana[@]}" 'Drift d alone' d.rb
+merge_changes '2026-04-07T12:00:00Z' 'Merge topic-b' --no-ff topic-b
+[[ "$(coupled_rows b_seed.rb)" == '[["c.rb",1]]' ]] \
+  || fail 'mainline drift should count once and merge-only d.rb be absent'
+
+# b2. The same drift seen through the first-parent diff, after merging
+# main into the topic and fast-forwarding main to the result.
+git checkout -q -b topic-m
+commit_changes '2026-04-08T12:00:00Z' "${dana[@]}" 'Topic m work' u.rb
+git checkout -q main
+commit_changes '2026-04-09T12:00:00Z' "${dana[@]}" 'Drift pair m' \
+  m_seed.rb f.rb
+commit_changes '2026-04-10T12:00:00Z' "${dana[@]}" 'Drift g alone' g.rb
+git checkout -q topic-m
+merge_changes '2026-04-11T12:00:00Z' 'Merge main into topic-m' --no-ff main
+git checkout -q main
+git merge -q --ff-only topic-m
+[[ "$(coupled_rows m_seed.rb)" == '[["f.rb",1]]' ]] \
+  || fail 'main-into-topic merge should not add drift or merge-only g.rb'
+
+# c. Bookkeeping files are never partners and must not take coupled slots.
+bookkeeping=(
+  CHANGELOG.md Gemfile.lock docs/release-notes-2.0.md package-lock.json
+  pnpm-lock.yaml go.sum HISTORY.rst News.TXT changes docs/ReleaseNotes.md
+  release_notes.txt yarn.lock
+)
+commit_changes '2026-05-01T12:00:00Z' "${dana[@]}" 'Cut release one' \
+  rel.rb "${bookkeeping[@]}" e.rb history.rb
+commit_changes '2026-05-02T12:00:00Z' "${dana[@]}" 'Cut release two' \
+  rel.rb "${bookkeeping[@]}"
+commit_changes '2026-05-03T12:00:00Z' "${dana[@]}" 'Cut release three' \
+  rel.rb "${bookkeeping[@]}"
+output="$("${GIT_RECON}" facts --format=json -- rel.rb)"
+expected_coupled='"coupled":[["e.rb",1,[2]],["history.rb",1,[2]]]'
+[[ "${output}" == *"${expected_coupled},"* ]] \
+  || fail 'bookkeeping files should not appear or consume coupled slots'
+
+# d. A bookkeeping seed still works; only its partners are filtered.
+output="$("${GIT_RECON}" facts --format=json -- CHANGELOG.md)"
+[[ "${output}" == '{"v":1,'* && "${output}" == *'"path":"CHANGELOG.md"'* ]] \
+  || fail 'facts should accept a bookkeeping seed path'
+expected_rows='[["rel.rb",3],["e.rb",1],["history.rb",1]]'
+[[ "$(coupled_rows CHANGELOG.md)" == "${expected_rows}" ]] \
+  || fail 'a bookkeeping seed should keep real partners, drop bookkeeping'
+
+# Everything else about the output is unchanged.
+output="$("${GIT_RECON}" facts --format=json -- rel.rb)"
+expected_commits="$(git log -3 --no-merges \
+  --format='["%H",%ct,"%s"]' -- rel.rb | paste -sd, -)"
+expected='{"v":1,"at":"'"$(git rev-parse HEAD)"'","path":"rel.rb",'
+head_epoch="$(git show -s --format=%ct HEAD)"
+expected="${expected}\"since\":$((head_epoch - 31536000)),"
+expected="${expected}\"commits\":[${expected_commits}],"
+expected="${expected}\"recent\":[0,1,2],\"repairs\":[],\"coupled\":"
+[[ "${output}" == "${expected}"* && "${output}" == *',"origins":[]}' ]] \
+  || fail 'coupling filters should leave the facts envelope unchanged'
+row='\["[^"]+",[0-9]+,\[[0-9]+(,[0-9]+)*\]\]'
+assert_contains "${output}" '"coupled":\[('"${row}"'(,'"${row}"')*)?\],' \
+  'coupled rows should keep the [path,count,[indexes]] shape'
 
 printf 'PASS: git-recon fixture tests\n'
