@@ -147,14 +147,28 @@ commit_changes '2026-06-20T12:00:00Z' 'Bob Active' 'bob@example.com' \
 output="$("${GIT_RECON}" churn)"
 assert_contains "${output}" '^[[:space:]]*8[[:space:]]+lib/complex\.rb$' \
   'existing churn command should count complex.rb changes'
+# Changelogs and lockfiles change with every release and drown out logic
+# files, so churn hides them and says so: 14 of the 86 changes are
+# CHANGELOG.md and Gemfile.lock.
+hidden_note='changelogs, lockfiles, release notes hidden'
 assert_contains "${output}" \
-  '^\(top 30 of 40 files = 88% of 86 changes in last year\)$' \
-  'churn should append a coverage-share footer'
+  "^\(top 30 of 38 files = 88% of 72 changes in last year; ${hidden_note}\)$" \
+  'churn should append a coverage-share footer naming hidden files'
+! printf '%s\n' "${output}" | grep -E 'CHANGELOG\.md|Gemfile\.lock' \
+  >/dev/null || fail 'churn should hide changelogs and lockfiles'
 
 output="$("${GIT_RECON}" churn-dirs)"
 assert_contains "${output}" \
-  '^\(top 5 of 5 dirs = 100% of 86 changes in last year\)$' \
-  'churn-dirs should append a coverage-share footer'
+  "^\(top 3 of 3 dirs = 100% of 72 changes in last year; ${hidden_note}\)$" \
+  'churn-dirs should append a coverage-share footer naming hidden files'
+
+output="$("${GIT_RECON}" repairs)"
+assert_contains "${output}" '^[[:space:]]*4[[:space:]]+lib/buggy\.rb$' \
+  'bug-files should count fix commits per logic file'
+assert_contains "${output}" "^\(${hidden_note}\)$" \
+  'bug-files should say which files it hides'
+! printf '%s\n' "${output}" | grep -E 'CHANGELOG\.md|Gemfile\.lock' \
+  >/dev/null || fail 'bug-files should hide changelogs and lockfiles'
 
 output="$("${GIT_RECON}" vitals)"
 assert_contains "${output}" \
@@ -616,5 +630,72 @@ set -e
 [[ -z "$(find "${FIXTURE_DIR}/facts-tmp" -type d \
   -name 'git-recon-facts.*' -print -quit)" ]] \
   || fail 'facts should clean temporary files when interrupted'
+
+# Report-noise fixture: its own repo so merges and many authors do not
+# disturb the facts expectations above.
+mkdir "${FIXTURE_DIR}/reports"
+cd "${FIXTURE_DIR}/reports"
+git init -q
+git config commit.gpgsign false
+git config core.fsmonitor false
+carol=('Carol Ops' 'carol@example.com')
+commit_changes '2025-01-01T12:00:00Z' 'Aaron Old' 'aaron@example.com' \
+  'Start team list' team.txt
+commit_changes '2026-05-01T12:00:00Z' "${carol[@]}" 'Add deploy script' \
+  deploy.sh
+commit_changes '2026-05-02T12:00:00Z' "${carol[@]}" \
+  'Revert "Add flaky cache"' cache.rb
+commit_changes '2026-05-03T12:00:00Z' "${carol[@]}" \
+  $'Tidy cache\n\nDoes not revert or hotfix anything.' cache.rb
+git checkout -q -b topic
+commit_changes '2026-05-04T12:00:00Z' "${carol[@]}" 'Hotfix cache warmup' \
+  cache.rb
+git checkout -q -
+commit_changes '2026-05-05T12:00:00Z' "${carol[@]}" 'Update deploy' deploy.sh
+GIT_AUTHOR_NAME='Carol Ops' GIT_AUTHOR_EMAIL='carol@example.com' \
+  GIT_AUTHOR_DATE='2026-05-06T12:00:00Z' \
+  GIT_COMMITTER_NAME='Carol Ops' GIT_COMMITTER_EMAIL='carol@example.com' \
+  GIT_COMMITTER_DATE='2026-05-06T12:00:00Z' \
+  git merge -q --no-ff -m 'Merge pull request #1 from team/revert-hotfix' topic
+commit_changes '2026-05-07T12:00:00Z' "${carol[@]}" 'Join team' team.txt
+for index in {10..29}; do
+  commit_changes "2026-06-${index}T12:00:00Z" "Member ${index}" \
+    "member${index}@example.com" "Member ${index} joins" team.txt
+done
+commit_changes '2026-06-30T12:00:00Z' "${carol[@]}" 'Update team' team.txt
+
+# Merge commits duplicate the work they merge; Rails' recent list was
+# half merges. 27 non-merge commits fall in the 90-day window.
+output="$("${GIT_RECON}" recent)"
+! printf '%s\n' "${output}" | grep 'Merge pull request' >/dev/null \
+  || fail 'recent should omit merge commits'
+assert_contains "${output}" \
+  '^\(27 of 27 non-merge commits in last 90 days\)$' \
+  'recent should say how many commits it shows of how many'
+
+# Firefights match subjects only: body text and merge subjects that echo
+# a branch name produced false positives on Rails.
+output="$("${GIT_RECON}" repairs | sed -n '/== firefights/,$p')"
+assert_contains "${output}" '^== firefights \(subject match, first 20\) ==$' \
+  'firefights should state its matching rule and cap'
+firefight_subjects="$(printf '%s\n' "${output}" | sed -n '2,$s/^[^ ]* //p')"
+expected=$'Hotfix cache warmup\nRevert "Add flaky cache"'
+[[ "${firefight_subjects}" == "${expected}" ]] \
+  || fail 'firefights should list only non-merge subject matches'
+
+# Owners is capped like every other report, and shows each author's last
+# commit to the path so long-gone owners are visible as such.
+output="$("${GIT_RECON}" owners team.txt)"
+assert_contains "${output}" '^commits last-commit author$' \
+  'owners should print its column header'
+assert_contains "${output}" '^[[:space:]]*2 2026-06-30 Carol Ops$' \
+  'owners should rank by commits and show the last commit date'
+assert_contains "${output}" '^[[:space:]]*1 2025-01-01 Aaron Old$' \
+  'owners should show an inactive owner with their old last commit'
+assert_contains "${output}" \
+  '^\(top 20 of 22 authors; git shortlog -sn HEAD -- team\.txt shows all\)$' \
+  'owners should cap its list and say how to see everyone'
+! printf '%s\n' "${output}" | grep -E 'Member 2[89]' >/dev/null \
+  || fail 'owners should drop authors past the cap, ties ordered by name'
 
 printf 'PASS: git-recon fixture tests\n'
