@@ -6,6 +6,12 @@ GIT_RECON="${SCRIPT_DIR}/../bin/git-recon"
 FIXTURE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/git-recon-tests.XXXXXX")"
 trap 'rm -rf "${FIXTURE_DIR}"' EXIT
 
+# Human reports use wall-clock windows (--since); pin git's "now" to just
+# after the fixed fixture dates so the suite does not age out.
+# GIT_TEST_DATE_NOW is git's own test hook (date.c); if git drops it, the
+# churn footer assertions fail again rather than passing silently.
+export GIT_TEST_DATE_NOW=1784073600 # 2026-07-15T00:00:00Z
+
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
   exit 1
