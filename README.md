@@ -122,7 +122,26 @@ ln -s "$PWD/skills/git-recon" ~/.claude/skills/git-recon
   path-based drill-down commands on the strongest signals.
 - Everything here is signal, not proof. The `repairs` section is a
   commit-message heuristic and depends on message discipline in the repo.
+- Windows (90 days recent, one year churn, six months authors) and section caps
+  are constants at the top of `bin/git-recon`, not flags. Interpretation
+  guidance lives in `git-recon explain`, so report output stays data only.
+- `coupling` counts pairs per commit over one year and skips commits that touch
+  more than 30 files. It reports counts, not ratios. `risk` multiplies one-year
+  churn by current lines times maximum indentation (a tab or two spaces is one
+  level) for current text files; deleted and binary files are excluded.
+  `silos` and `test-gap` examine only the top 20 churn files, and `fix-rate`
+  requires five commits. `test-gap` classifies tests by path only: `test`,
+  `tests`, `spec`, or `__tests__` directories and `_test`, `_spec`, `.test`, or
+  `.spec` filenames.
+- `hotspot` passes `--follow` to `git log`, so a file's history continues
+  across renames.
+- The script runs on Bash 3.2 (macOS `/bin/bash`), hence the `env` shebang. It
+  sets `set -eu` without `pipefail` because sections pipe through `head`, which
+  can SIGPIPE an upstream `sort` and would otherwise fail the command.
 - `facts` is the versioned machine contract; it does not change the plain-text
   human commands or their overview-first workflow.
+- `test/benchmark_facts.sh` is an opt-in timing check against an external
+  checkout. Wall time is machine-dependent, so it stays out of the
+  deterministic `test/run_tests.sh` suite.
 - Requires a `.git` directory; jj-native repos are unsupported (use `jj`
   directly).
