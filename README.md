@@ -74,12 +74,14 @@ count, then path; origins follow current line order.
 Repair candidates match `fix|bug|broken` case-insensitively against the full
 commit message. Coupling counts qualifying cochanges with the seed: commits
 touching more than 30 distinct added, modified, or deleted paths are skipped,
-and only coupled paths that exist at the resolved revision are returned. Its
-  supporting indexes are representative and capped at five. They reuse
-support commits from the fixed recent/repair commit table; when none occur
-there, the producer reuses or adds the newest support. History is scoped to the
-literal path and does not
-follow renames. Origins are emitted only with `-L`; they collapse contiguous,
+and only coupled paths that exist at the resolved revision are returned.
+Supporting indexes are representative and capped at five: they reuse support
+commits from the fixed recent/repair commit table, and when none occur there
+the producer reuses or adds the newest support. History is scoped to the
+literal path and does not follow renames. Recent and repair commits come from
+Git's default simplified path history, while coupling candidates use full
+history, so a merge-side cochange can support a coupled row without appearing
+in `recent`. Origins are emitted only with `-L`; they collapse contiguous,
 whitespace-insensitive blame spans inside the requested current-line range.
 
 Shallow repositories are refused. Typed errors go to stdout as JSON and exit

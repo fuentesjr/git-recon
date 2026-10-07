@@ -73,6 +73,16 @@
 - Coupling filters commits over the 30-path ceiling in a quoted line-oriented
   pass, then sends only eligible commits through the exact NUL-delimited Bash
   parser. Quoted names are count keys only and never reach the JSON response.
+- `facts -L` blame parsing accepts only untabbed full-OID porcelain headers.
+  Tab-prefixed content lines shaped like `hex num num` previously passed the
+  filter and produced fabricated origins (when the hex resolved to a real
+  object prefix) or a spurious git_failure. Porcelain OIDs are always full
+  and never `^`-prefixed, so the per-line `rev-parse` validation went too.
+- Subject byte cap uses `head -c`, not `dd bs= count=1`, whose single-read
+  pipe semantics could in principle under-fill the cap.
+- Recent/repair walks use Git's default simplified path history while
+  coupling candidates use `--full-history`; the asymmetry is now documented
+  in the README as part of the contract.
 
 ## Scope boundaries
 
@@ -156,6 +166,12 @@
   `02c35bdc7c0d73c3b7eaece160ec4f0ad66efcc72558b940cf4f17d329e1ff43`).
 - Final checkout runs completed in 4.838s, 4.845s, and 5.192s. The fixture
   suite, ShellCheck, Bash syntax checks, and `git diff --check` all pass.
+- Blame-parse fix was red-green: a new fixture commits a file whose content
+  lines are `<real-commit-prefix> 5 7` and `abc 1 2`; red reproduced the
+  git_failure, green asserts origins are exactly `[[0,1,2]]`. The skill's
+  automated-consumers section was rewritten self-contained (caps, window,
+  typed errors, schema pointer) and no longer references ctxpack, which
+  does not exist yet.
 - A compiled rewrite is not justified by this profile. Keeping Git subprocesses
   leaves roughly one second of orchestration overhead after optimization;
   replacing the history walks would instead be a new Git-semantics and

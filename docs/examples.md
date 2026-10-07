@@ -8,21 +8,26 @@ interpretation notes are what you'd conclude at each step.
 
 Pinned so drift is detectable:
 
-- git-recon `f1e33d6` (2026-07-11)
+- git-recon `f1e33d6` (2026-07-11); the `recent`, `churn`, `churn-dirs`,
+  `bug-files`, and `owners` blocks were regenerated with the commit that
+  last changed this file (`git log -1 -- docs/examples.md`). The other
+  blocks reproduce unchanged with that commit.
 - rails/rails at `3947087c36` (main, 2026-07-12), full-history
   single-branch clone (vitals counts all refs, so a default clone's numbers
   will differ slightly)
-- session run 2026-07-12
+- session run 2026-07-12; regenerated blocks run on a clock pinned to
+  2026-07-12T20:00:00Z
 
 The run date is a load-bearing pin, not trivia: every analysis window
 (`1 year ago`, 90 days, 6 months) resolves against the clock at run time,
 not against the checkout. Checking out `3947087c36` pins the upper bound of
 history, but the window's lower bound moves with the clock — run this
 months later and `recent` drains while churn counts shrink. To reproduce
-exactly, run on a clock set to 2026-07-12 (e.g. libfaketime), or rerun the
-underlying git commands with absolute dates (`--since=2025-07-12` matches
-the one-year sections byte-for-byte). Rows with equal counts may swap order
-across locales.
+exactly, pin git's clock with `GIT_TEST_DATE_NOW=1783886400`
+(2026-07-12T20:00:00Z; an internal git test hook, verified with git 2.49),
+or rerun the underlying git commands with absolute dates
+(`--since=2025-07-12` matches the one-year sections byte-for-byte). Rows
+with equal counts may swap order across locales.
 
 ## 1. Orient: `git-recon overview`
 
@@ -39,62 +44,59 @@ a repo where 1,953 files changed last year, 42 commits on one file is a lot.
 
 ```text
 == recent (last 90 days, first 50) ==
-2026-07-12 3947087c36 fatkodima Merge pull request #58077 from 55728/fix-query-command-line-comment-strip
 2026-07-11 09e9417652 Kenta Ishizaki Strip only the commented line when detecting a LIMIT in rails query
-2026-07-12 109b3c4c58 fatkodima Merge pull request #58092 from 55728/fix-relative-time-in-words-non-time-inputs
 2026-07-12 b0955ca345 Kenta Ishizaki Accept Date and numeric inputs in relative_time_in_words
-2026-07-12 d30eb2413c fatkodima Merge pull request #58091 from 55728/fix-sqlite3-add-check-constraint-if-not-exists
+2026-07-12 b1a33e9d2a Kenta Ishizaki Honor if_not_exists in SQLite3 add_check_constraint and add_foreign_key
 …
 2026-07-11 82557c1738 kyuuri1791 Fix MySQL POINT and MULTIPOINT columns being misreported as integers
 …
 2026-07-07 43bc0d9dc7 Winfield Peterson Fix ActionController::Live streams hanging on client disconnect
-… (output trimmed)
+…
+(50 of 731 non-merge commits in last 90 days)
 ```
 
-Daily cadence, merge-PR workflow, and descriptive "Fix …" subjects. That
-last part matters: the `repairs` and `fix-rate` sections are commit-message
-heuristics, and this repo's message discipline means they'll be trustworthy.
+Daily cadence and descriptive "Fix …" subjects. That second part matters:
+the `repairs` and `fix-rate` sections are commit-message heuristics, and
+this repo's message discipline means they'll be trustworthy. The footer
+says the 50 lines cover one week (July 5–12) of 731 commits in 90 days, so
+this section samples the cadence rather than summarizing the quarter.
 
 ```text
 == churn (last year, top 30 files) ==
- 124 activerecord/CHANGELOG.md
-  67 actionpack/CHANGELOG.md
-  66 Gemfile.lock
-  60 activesupport/CHANGELOG.md
-  55 railties/CHANGELOG.md
   53 guides/source/configuring.md
   42 activerecord/lib/active_record/connection_adapters/postgresql_adapter.rb
   37 activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb
-  34 activestorage/CHANGELOG.md
   33 activerecord/lib/active_record/connection_adapters/abstract/connection_pool.rb
+  31 railties/test/generators/app_generator_test.rb
 …
+  26 Gemfile
   26 activerecord/lib/active_record/relation/query_methods.rb
-… (output trimmed)
-(top 30 of 1953 files = 17% of 6059 changes in last year)
+…
+(top 30 of 1932 files = 13% of 5490 changes in last year; changelogs, lockfiles, release notes hidden)
 ```
 
-First check for expected glue — and here the entire top of the list is glue:
-CHANGELOGs and `Gemfile.lock` churn because every feature touches them, not
-because they're unstable. The first real logic file is
-`postgresql_adapter.rb` at 42 commits. The share footer says the top 30
-files cover only 17% of changes: change is spread out, so the per-file
-ranking is a weak signal on its own and `churn-dirs` matters more:
+Changelogs and `Gemfile.lock` churn because every feature touches them, not
+because they're unstable, so `churn` hides them. Still check for expected
+glue: the top entry is the configuration guide, and `Gemfile` remains. The
+first logic file is `postgresql_adapter.rb` at 42 commits. The share footer
+says the top 30 files cover only 13% of changes: change is spread out, so
+the per-file ranking is a weak signal on its own and `churn-dirs` matters
+more:
 
 ```text
 == churn-dirs (last year, top 20 dirs) ==
- 368 guides/source
+ 331 guides/source
  290 activerecord/test/cases
  249 activerecord/lib/active_record
  219 activesupport/lib/active_support
  145 activesupport/test
- 137 activerecord
  131 activerecord/lib/active_record/connection_adapters
  109 activerecord/lib/active_record/connection_adapters/abstract
   92 activerecord/test/cases/adapters/postgresql
 …
   70 activerecord/lib/active_record/connection_adapters/postgresql
-… (output trimmed)
-(top 20 of 445 dirs = 42% of 6059 changes in last year)
+…
+(top 20 of 443 dirs = 43% of 5490 changes in last year; changelogs, lockfiles, release notes hidden)
 ```
 
 Three of the top twenty directories are the same subsystem. The hotspot
@@ -105,19 +107,21 @@ the trail to follow.
 == repairs (last year) ==
 
 == bug-files ==
-  47 activerecord/CHANGELOG.md
-  21 Gemfile.lock
-  18 actionpack/CHANGELOG.md
+  17 guides/source/configuring.md
+  13 railties/test/generators/app_generator_test.rb
+  11 railties/test/application/configuration_test.rb
 …
    8 activerecord/lib/active_record/connection_adapters/postgresql/schema_statements.rb
 …
-   7 activerecord/lib/active_record/relation/query_methods.rb
-… (output trimmed)
+   7 activerecord/lib/active_record/connection_adapters/abstract/connection_pool.rb
+…
+(changelogs, lockfiles, release notes hidden)
 ```
 
-A caveat in action: CHANGELOGs dominate because Rails' convention is that
-every fix commit also edits a changelog, so the glue absorbs the signal.
-Read past it to the logic files — the adapter layer shows up again.
+Rails' convention is that every fix commit also edits a changelog, so
+unfiltered, changelogs would top this list; `bug-files` hides them like
+`churn` does. Railties configuration and its guide lead, and the adapter
+layer shows up again below them.
 
 ## 2. Risk pass: `git-recon deep`
 
@@ -198,17 +202,20 @@ changelog, and the other adapters. A patch here is rarely a one-file patch.
 
 ```text
 $ git-recon owners activerecord/lib/active_record/connection_adapters/postgresql_adapter.rb
-   126	Aaron Patterson
-    90	Ryuta Kamizono
-    67	Jeremy Kemper
-    49	Matthew Draper
-… (output trimmed)
+commits last-commit author
+    126 2014-11-13 Aaron Patterson
+     90 2025-08-25 Ryuta Kamizono
+     67 2014-04-01 Jeremy Kemper
+     49 2026-06-06 Matthew Draper
+…
+(top 20 of 222 authors; git shortlog -sn HEAD -- activerecord/lib/active_record/connection_adapters/postgresql_adapter.rb shows all)
 ```
 
-All-time counts differ from the recent picture: the historical owners are
-Aaron Patterson and Ryuta Kamizono, but `silos` showed the last year belongs
-to Matthew Draper. For "why is it like this" ask history; for "what's
-changing now" ask Draper.
+All-time counts differ from the recent picture, and the last-commit column
+shows it: Aaron Patterson leads on count but last touched the file in 2014,
+while Matthew Draper's last commit was a month before this session, matching
+`silos`. For "why is it like this" ask history; for "what's changing now"
+ask Draper.
 
 ```text
 $ git-recon hotspot activerecord/lib/active_record/connection_adapters/postgresql_adapter.rb

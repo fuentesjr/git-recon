@@ -29,18 +29,22 @@ section (caveats, what each signal does and does not mean).
 
 ## Automated consumers
 
-Use this bounded machine contract when an agent or tool needs history for a
-known seed path:
+Use the versioned machine contract when a tool or pipeline needs bounded
+history for one known seed path, instead of parsing the human reports:
 
 ```text
 git-recon facts --format=json [--at REV] [-L START,END] -- PATH
 ```
 
-For ctxpack, resolve the input seed to a repository path and optional source
-range before calling `facts`; ctxpack decides which returned facts enter its
-packet. Parse the versioned compact JSON by its schema rather than displaying
-the transport directly. This interface supplements, and never replaces, the
-overview-first human orientation workflow above.
+One compact JSON line per call: a shared commit table (capped at 20) plus
+recent, repair, and coupled-path facts — and line origins with `-L` — each
+capped at five. The window is 365 days anchored to the resolved revision.
+Typed errors go to stdout as JSON with a nonzero exit; shallow repositories
+are refused. Resolve the seed to a repository path (and optional line range)
+before calling, and parse by the schema (`schema/facts-v1.schema.json` in
+the git-recon repo) rather than displaying the transport directly. For
+interactive orientation this supplements, and never replaces, the
+overview-first workflow above.
 
 ## Rules
 
