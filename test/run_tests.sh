@@ -396,6 +396,40 @@ output="$("${GIT_RECON}" facts --format=json -- lib)"
 [[ "${output}" == *'"path":"lib"'*"[\"${unrelated_path_sha}\""* ]] \
   || fail 'facts should preserve recursive directory history'
 
+commit_changes '2026-07-02T12:30:00Z' 'Bob Active' 'bob@example.com' \
+  'path spelling seed' norm/seed.rb outside_norm.rb
+norm_dir="$("${GIT_RECON}" facts --format=json -- norm)"
+[[ "${norm_dir}" == *'"path":"norm"'* \
+  && "${norm_dir}" == *'"coupled":[["outside_norm.rb"'* ]] \
+  || fail 'facts should couple a directory path to outside files'
+for norm_pair in 'norm/:norm' './norm:norm' './norm/:norm' '././norm:norm' \
+  './norm/seed.rb:norm/seed.rb'; do
+  norm_in="${norm_pair%%:*}"
+  norm_out="${norm_pair##*:}"
+  output="$("${GIT_RECON}" facts --format=json -- "${norm_in}")" \
+    || fail "facts should accept path spelling ${norm_in}"
+  expected="$("${GIT_RECON}" facts --format=json -- "${norm_out}")"
+  [[ "${output}" == "${expected}" \
+    && "${output}" == *"\"path\":\"${norm_out}\""* ]] \
+    || fail "facts ${norm_in} should equal ${norm_out} with normalized path"
+done
+assert_facts_error "${FIXTURE_DIR}" invalid_path \
+  'path does not exist at revision' "${GIT_RECON}" facts --format=json \
+  -- norm//
+assert_facts_error "${FIXTURE_DIR}" invalid_path \
+  'path does not exist at revision' "${GIT_RECON}" facts --format=json \
+  -- norm/./seed.rb
+assert_facts_error "${FIXTURE_DIR}" invalid_path \
+  'path does not exist at revision' "${GIT_RECON}" facts --format=json \
+  -- norm/.
+assert_facts_error "${FIXTURE_DIR}/test" invalid_path \
+  'path does not exist at revision' "${GIT_RECON}" facts --format=json \
+  -- ../outside_norm.rb
+assert_facts_error "${FIXTURE_DIR}" invalid_arguments \
+  'invalid facts arguments' "${GIT_RECON}" facts --format=json -- ./
+assert_facts_error "${FIXTURE_DIR}" invalid_arguments \
+  'invalid facts arguments' "${GIT_RECON}" facts --format=json -- /
+
 marker_partner=$'COMMIT\t0000000000000000000000000000000000000000'
 commit_changes '2026-07-03T13:00:00Z' 'Bob Active' 'bob@example.com' \
   'marker-shaped partner path' AAA_marker_seed.rb "${marker_partner}"

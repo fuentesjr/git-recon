@@ -52,7 +52,8 @@ git-recon facts --format=json [--at REV] [-L START,END] -- PATH
 ```
 
 PATH is relative to the repository root and names a file or directory (`-L`
-needs a file); `--at` defaults to `HEAD`.
+needs a file); `--at` defaults to `HEAD`. A leading `./` and a trailing `/`
+are stripped.
 
 One compact JSON line per call: a shared commit table (capped at 20) plus
 recent, repair, and coupled-path facts — and line origins with `-L` — each

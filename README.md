@@ -42,7 +42,8 @@ git-recon facts --format=json [--at REV] [-L START,END] -- PATH
 ```
 
 PATH is relative to the repository root and names a file or directory (`-L`
-needs a file); `--at` defaults to `HEAD`.
+needs a file); `--at` defaults to `HEAD`. A leading `./` and a trailing `/`
+are stripped, and `path` echoes the normalized value.
 
 The command emits one compact line; whitespace is added below for display:
 

@@ -547,11 +547,20 @@ facts() {
 
   [[ "$format" == 'json' ]] \
     || facts_error unsupported_format 'only --format=json is supported'
+  while [[ "$path" == ./* ]]; do path="${path#./}"; done
+  path="${path%/}"
   [[ -n "$path" ]] \
     || facts_error invalid_arguments 'invalid facts arguments'
   command -v iconv >/dev/null 2>&1 \
     || facts_error git_failure 'required system tool is unavailable'
   validate_facts_path "$path"
+  [[ "$path" != */ ]] \
+    || facts_error invalid_path 'path does not exist at revision'
+  case "/${path}/" in
+    */./*|*/../*)
+      facts_error invalid_path 'path does not exist at revision'
+      ;;
+  esac
   escaped_path="$(json_escape "$path")"
   pathspec=":(top,literal)${path}"
   local shallow
@@ -622,11 +631,16 @@ facts() {
   # Reuse the path-limited commit set when matching repair messages. Repeating
   # the path history walk produces the same candidates but is costly on hot
   # files in large repositories.
-  awk '{ print $2 }' "$log_file" \
-    | git log --stdin --no-walk=unsorted -i -E \
-      --grep='fix|bug|broken' --format='%ct %H' 2>/dev/null \
-      > "$repairs_log_file" \
-    || facts_error git_failure 'git query failed'
+  # An empty history must skip the walk: git log --stdin defaults to HEAD.
+  if [[ -s "$log_file" ]]; then
+    awk '{ print $2 }' "$log_file" \
+      | git log --stdin --no-walk=unsorted -i -E \
+        --grep='fix|bug|broken' --format='%ct %H' 2>/dev/null \
+        > "$repairs_log_file" \
+      || facts_error git_failure 'git query failed'
+  else
+    : > "$repairs_log_file"
+  fi
   awk -v since="$since" -v cutoff="$epoch" \
       '$1 >= since && $1 <= cutoff' "$repairs_log_file" \
     | LC_ALL=C sort -k1,1nr -k2,2 \
